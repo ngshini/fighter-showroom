@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Chọn Võ Sĩ 3D — Phòng Trưng Bày Model</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#0a0618; font-family:'Segoe UI', system-ui, sans-serif; color:#fff; }
+  #scene { position:fixed; inset:0; }
+  #scene canvas { display:block; }
+  header { position:fixed; top:0; left:0; right:0; text-align:center; padding:14px 10px 4px; pointer-events:none; z-index:5;
+    background:linear-gradient(180deg, rgba(5,2,16,.75), transparent); }
+  header h1 { font-size:clamp(20px,3.4vw,34px); letter-spacing:2px; color:#ffd34d; text-shadow:0 0 18px rgba(255,170,0,.55), 0 2px 0 #7c2d12; }
+  header p { font-size:clamp(12px,1.6vw,15px); color:#cdbcf5; margin-top:3px; }
+  .plate { position:fixed; transform:translate(-50%,-100%); text-align:center; pointer-events:auto; cursor:pointer; z-index:4;
+    background:rgba(10,6,28,.72); border:1px solid rgba(255,211,77,.35); border-radius:10px; padding:4px 10px 5px; min-width:86px;
+    transition:border-color .15s, background .15s; }
+  .plate:hover, .plate.active { border-color:#ffd34d; background:rgba(40,24,80,.88); }
+  .plate .nm { font-weight:800; font-size:14px; letter-spacing:1px; white-space:nowrap; }
+  .plate .sub { font-size:10.5px; color:#b7a8e8; white-space:nowrap; }
+  .plate .ld { font-size:11px; color:#8f83b8; }
+  #bar { position:fixed; left:0; right:0; bottom:0; z-index:6; display:flex; flex-wrap:wrap; gap:6px; justify-content:center; padding:10px 8px 12px;
+    background:linear-gradient(0deg, rgba(5,2,16,.85), transparent); }
+  #bar button { pointer-events:auto; cursor:pointer; border:1px solid rgba(255,211,77,.4); background:rgba(24,14,52,.9); color:#ffe9a8;
+    font-size:13px; font-weight:700; padding:8px 12px; border-radius:999px; }
+  #bar button:hover, #bar button.active { background:#ffd34d; color:#241203; }
+  #note { position:fixed; left:50%; transform:translateX(-50%); bottom:64px; z-index:5; max-width:min(680px,92vw); text-align:center;
+    font-size:13px; color:#e8defc; background:rgba(10,6,28,.66); border-radius:10px; padding:7px 14px; pointer-events:none; }
+  #note b { color:#ffd34d; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "./three.module.js",
+  "three/addons/": "./addons/"
+} }
+</script>
+</head>
+<body>
+<div id="scene"></div>
+<header>
+  <h1>⚔️ CHỌN VÕ SĨ 3D ⚔️</h1>
+  <p>Bấm vào từng nhân vật (hoặc nút bên dưới) để xem cận cảnh + đòn mẫu — ưng ai thì báo mình thay vào game</p>
+</header>
+<div id="note">Đang tải các model… (khoảng 21MB, chờ chút)</div>
+<div id="bar"></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const ROSTER = [
+  { id:'xbot',  name:'XBOT', sub:'Mẫu hiện tại trong game', file:'models/Xbot.glb', accent:0x7dd3fc,
+    idle:'idle', sig:'walk', sigNote:'Chỉ có đứng / đi / chạy — đòn phải tự chế bằng xương',
+    note:'<b>XBOT</b> — model đang dùng trong game hiện tại. Người xám kiểu mannequin, animation ít (đứng, đi, chạy), không có sẵn đòn đấm đá.' },
+  { id:'barb',  name:'BARBARIAN', sub:'KayKit · Chiến binh', file:'models/KayKit-Barbarian.glb', accent:0xf97316,
+    idle:'Unarmed_Idle', sig:'2H_Melee_Attack_Spin', sigNote:'',
+    note:'<b>BARBARIAN</b> — chiến binh cơ bắp của bộ KayKit (miễn phí CC0). Có sẵn <b>76 animation</b>: đấm tay không, đá, chém, đỡ đòn, trúng đòn, né, chết, ăn mừng — đủ trọn bộ cho game đối kháng.' },
+  { id:'knight', name:'KNIGHT', sub:'KayKit · Hiệp sĩ', file:'models/KayKit-Knight.glb', accent:0xe2e8f0,
+    idle:'Unarmed_Idle', sig:'1H_Melee_Attack_Slice_Horizontal', sigNote:'',
+    note:'<b>KNIGHT</b> — hiệp sĩ giáp sắt + kiếm khiên, cùng bộ KayKit 76 animation. Phong cách fantasy châu Âu, gắn thêm kiếm/khiên vào tay được.' },
+  { id:'mage',   name:'MAGE', sub:'KayKit · Pháp sư', file:'models/KayKit-Mage.glb', accent:0xa78bfa,
+    idle:'Unarmed_Idle', sig:'Spellcast_Shoot', sigNote:'',
+    note:'<b>MAGE</b> — pháp sư áo choàng tím, cùng bộ KayKit. Thêm được các đòn phép (Spellcast) làm tuyệt chiêu rất hợp.' },
+  { id:'rogue',  name:'ROGUE', sub:'KayKit · Sát thủ', file:'models/KayKit-Rogue.glb', accent:0x34d399,
+    idle:'Unarmed_Idle', sig:'Dualwield_Melee_Attack_Slice', sigNote:'',
+    note:'<b>ROGUE</b> — sát thủ song kiếm nhanh nhẹn, cùng bộ KayKit. Đòn song kiếm + né 4 hướng nhìn rất đã.' },
+  { id:'robot',  name:'ROBOT', sub:'RobotExpressive · Vui nhộn', file:'models/RobotExpressive.glb', accent:0xfacc15,
+    idle:'Idle', sig:'Punch', sigNote:'',
+    note:'<b>ROBOT</b> — robot hoạt hình dễ thương, có sẵn 14 animation gồm <b>đòn đấm thật, nhảy, chết, vẫy chào, ăn mừng</b>. Hợp game vui nhộn hơn là đấu thú nghiêm túc.' },
+  { id:'michelle', name:'MICHELLE', sub:'Người thật · Nhảy samba', file:'models/Michelle.glb', accent:0xf472b6,
+    idle:'SambaDance', sig:null, sigNote:'',
+    note:'<b>MICHELLE</b> — người thật (Mixamo) nhưng chỉ có đúng 1 animation nhảy samba — đẹp và sống động nhưng <b>không có</b> đứng thường/đi/đấm, khó làm võ sĩ.' },
+];
+
+const container=document.getElementById('scene');
+const renderer=new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.12;
+container.appendChild(renderer.domElement);
+
+const scene=new THREE.Scene();
+scene.fog=new THREE.Fog(0x0a0618, 16, 34);
+const camera=new THREE.PerspectiveCamera(42, innerWidth/innerHeight, 0.1, 100);
+camera.position.set(0,2.7,14.2);
+
+scene.add(new THREE.HemisphereLight(0x8a7fd6, 0x1a1030, 0.85));
+const key=new THREE.DirectionalLight(0xfff1d6, 2.2);
+key.position.set(5,9,7); key.castShadow=true;
+key.shadow.mapSize.set(2048,2048);
+key.shadow.camera.left=-10; key.shadow.camera.right=10; key.shadow.camera.top=8; key.shadow.camera.bottom=-4;
+scene.add(key);
+const rim=new THREE.DirectionalLight(0x7c5cff, 1.1); rim.position.set(-6,4,-6); scene.add(rim);
+
+/* stage */
+{
+  const floor=new THREE.Mesh(new THREE.CircleGeometry(11.5,48), new THREE.MeshStandardMaterial({ color:0x17112e, roughness:0.9 }));
+  floor.rotation.x=-Math.PI/2; floor.receiveShadow=true; scene.add(floor);
+  const ring=new THREE.Mesh(new THREE.RingGeometry(10.6,10.85,64), new THREE.MeshBasicMaterial({ color:0xffb020, transparent:true, opacity:0.5, side:THREE.DoubleSide }));
+  ring.rotation.x=-Math.PI/2; ring.position.y=0.01; scene.add(ring);
+  const sky=new THREE.Mesh(new THREE.SphereGeometry(45,24,14), new THREE.ShaderMaterial({
+    side:THREE.BackSide, depthWrite:false, fog:false,
+    uniforms:{ top:{value:new THREE.Color(0x0d0524)}, bot:{value:new THREE.Color(0x3b1d5e)} },
+    vertexShader:'varying vec3 vP; void main(){ vP=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+    fragmentShader:'uniform vec3 top; uniform vec3 bot; varying vec3 vP; void main(){ float h=clamp(normalize(vP).y*1.5+0.12,0.0,1.0); gl_FragColor=vec4(mix(bot,top,pow(h,0.75)),1.0); }'
+  }));
+  scene.add(sky);
+}
+
+const loader=new GLTFLoader();
+const entries=[];
+const camGoal={ pos:new THREE.Vector3(0,2.7,14.2), tgt:new THREE.Vector3(0,1.15,0) };
+let focused=-1;
+
+const bar=document.getElementById('bar');
+const noteEl=document.getElementById('note');
+const allBtn=document.createElement('button');
+allBtn.textContent='↩ Xem tất cả'; allBtn.onclick=()=>focus(-1); bar.appendChild(allBtn);
+
+ROSTER.forEach((cfg,i)=>{
+  const x=(i-(ROSTER.length-1)/2)*2.25;
+  const z=-(x*x)*0.022;
+  const group=new THREE.Group(); group.position.set(x,0,z); scene.add(group);
+  const ped=new THREE.Mesh(new THREE.CylinderGeometry(0.88,0.98,0.2,28),
+    new THREE.MeshStandardMaterial({ color:0x241a4a, roughness:0.55, metalness:0.25 }));
+  ped.position.y=0.1; ped.receiveShadow=true; group.add(ped);
+  const rimRing=new THREE.Mesh(new THREE.TorusGeometry(0.88,0.028,10,40),
+    new THREE.MeshBasicMaterial({ color:cfg.accent }));
+  rimRing.rotation.x=Math.PI/2; rimRing.position.y=0.2; group.add(rimRing);
+  const spot=new THREE.SpotLight(cfg.accent, 55, 12, 0.5, 0.55, 1.4);
+  spot.position.set(x,6.5,z+0.6); spot.target.position.set(x,0.9,z); scene.add(spot); scene.add(spot.target);
+
+  const plate=document.createElement('div');
+  plate.className='plate'; plate.innerHTML=`<div class="nm" style="color:#${cfg.accent.toString(16).padStart(6,'0')}">${cfg.name}</div><div class="ld">đang tải…</div>`;
+  plate.onclick=()=>focus(i); document.body.appendChild(plate);
+  const btn=document.createElement('button'); btn.textContent=cfg.name; btn.onclick=()=>focus(i); bar.appendChild(btn);
+
+  const entry={ cfg, group, plate, btn, model:null, mixer:null, actions:{}, cur:null, sigTimer:0, anchor:new THREE.Vector3(x,2.35,z) };
+  entries.push(entry);
+
+  loader.load(cfg.file, gltf=>{
+    const model=gltf.scene;
+    const box=new THREE.Box3().setFromObject(model);
+    const h=box.max.y-box.min.y || 1;
+    model.scale.setScalar(1.78/h);
+    const box2=new THREE.Box3().setFromObject(model);
+    model.position.y=0.2-box2.min.y;
+    model.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.frustumCulled=false; } });
+    group.add(model);
+    entry.model=model;
+    entry.mixer=new THREE.AnimationMixer(model);
+    for(const clip of gltf.animations){
+      const a=entry.mixer.clipAction(clip); a.enabled=false; entry.actions[clip.name]=a;
+    }
+    playClip(entry, cfg.idle, 0);
+    plate.querySelector('.ld').outerHTML=`<div class="sub">${cfg.sub}</div>`;
+    entry.mixer.addEventListener('finished', ()=>{ if(entry.cur===entry.cfg.sig) playClip(entry, entry.cfg.idle, 0.25); });
+    checkAllLoaded();
+  }, undefined, err=>{ plate.querySelector('.ld').textContent='lỗi tải model'; console.error(err); });
+});
+
+function playClip(entry, name, fade=0.22){
+  const next=entry.actions[name]; if(!next) return;
+  const prev=entry.cur? entry.actions[entry.cur] : null;
+  next.enabled=true; next.reset(); next.setEffectiveWeight(1); next.fadeIn(fade); next.play();
+  if(prev && prev!==next) prev.fadeOut(fade);
+  entry.cur=name;
+}
+function playSig(entry){
+  const sig=entry.cfg.sig; if(!sig || !entry.actions[sig]) return;
+  const a=entry.actions[sig];
+  playClip(entry, sig, 0.15);
+  if(entry.cfg.id==='xbot'){ // walk is a loop: show ~2.2s then back to idle
+    clearTimeout(entry.sigTimer);
+    entry.sigTimer=setTimeout(()=>{ if(entry.cur==='walk') playClip(entry,'idle',0.3); }, 2200);
+  } else {
+    a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished=false;
+  }
+}
+function focus(i){
+  focused=i;
+  entries.forEach((e,j)=>{
+    e.plate.classList.toggle('active', j===i);
+    e.btn.classList.toggle('active', j===i);
+  });
+  if(i<0){
+    camGoal.pos.set(0,2.7,14.2); camGoal.tgt.set(0,1.15,0);
+    noteEl.innerHTML='Bấm vào từng nhân vật để xem cận cảnh + đòn mẫu. Ưng ai thì báo mình thay vào game Đấu Trường Thú.';
+  } else {
+    const e=entries[i];
+    camGoal.pos.set(e.group.position.x, 1.75, e.group.position.z+3.6);
+    camGoal.tgt.set(e.group.position.x, 1.05, e.group.position.z);
+    noteEl.innerHTML=e.cfg.note;
+    if(e.model) playSig(e);
+  }
+}
+let loadedCount=0;
+function checkAllLoaded(){
+  loadedCount++;
+  if(loadedCount>=ROSTER.length) noteEl.innerHTML='Đã tải xong cả 7 model. Bấm vào từng nhân vật để xem cận cảnh + đòn mẫu — ưng ai thì báo mình.';
+  else noteEl.textContent=`Đang tải model… ${loadedCount}/${ROSTER.length}`;
+}
+
+/* click on 3D model = focus */
+const ray=new THREE.Raycaster(), ptr=new THREE.Vector2();
+renderer.domElement.addEventListener('pointerdown', e=>{
+  ptr.set((e.clientX/innerWidth)*2-1, -(e.clientY/innerHeight)*2+1);
+  ray.setFromCamera(ptr, camera);
+  for(let i=0;i<entries.length;i++){
+    const en=entries[i];
+    if(en.model && ray.intersectObject(en.group, true).length){ focus(i); return; }
+  }
+});
+
+const clock=new THREE.Clock();
+const tmpV=new THREE.Vector3();
+function animate(){
+  requestAnimationFrame(animate);
+  const dt=Math.min(clock.getDelta(), 0.05), t=clock.elapsedTime;
+  for(const e of entries){
+    if(e.mixer) e.mixer.update(dt);
+    if(e.model) e.model.rotation.y = Math.sin(t*0.45 + entries.indexOf(e)*1.1)*0.55;
+  }
+  camera.position.lerp(camGoal.pos, 0.06);
+  tmpV.copy(camGoal.tgt); camera.lookAt(tmpV);
+  // project plates
+  for(const e of entries){
+    tmpV.copy(e.anchor).project(camera);
+    const behind=tmpV.z>1;
+    e.plate.style.display=behind? 'none':'block';
+    e.plate.style.left=((tmpV.x*0.5+0.5)*innerWidth)+'px';
+    e.plate.style.top=((-tmpV.y*0.5+0.5)*innerHeight-8)+'px';
+  }
+  renderer.render(scene, camera);
+}
+animate();
+
+addEventListener('resize', ()=>{
+  camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
